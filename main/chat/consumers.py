@@ -2,24 +2,31 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 import json
 
 class ChatConsumer(AsyncWebsocketConsumer):
+
     async def connect(self):
+
+        # Room name - all users will be in this group
+        # For multiple rooms: self.room_group_name = self.scope['url_route']['kwargs']['room_name']
         self.room_group_name = 'Test-Room'
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
 
     async def disconnect(self, close_code):
+
         await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
         print('Disconnect!')
 
     async def receive(self, text_data):
+
         receive_dict = json.loads(text_data)
         message = receive_dict['message']
         action = receive_dict['action']
 
         if(action == 'new-offer') or (action == 'new-answer'):
+
             receiver_channel_name = receive_dict['message']['receiver_channel_name']
             receive_dict['message']['receiver_channel_name'] = self.channel_name
-
+            
             await self.channel_layer.send(
                 receiver_channel_name,
                 {
@@ -38,6 +45,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }
         )
 
+    # SEND MESSAGE TO CLIENT
     async def send_sdp(self, event):
         receive_dict = event['receive_dict']
         await self.send(text_data=json.dumps(receive_dict))
