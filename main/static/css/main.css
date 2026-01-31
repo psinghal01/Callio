@@ -691,12 +691,58 @@ a {
     list-style: none;
 }
 
-#message-list li {
+#message-list,
+#msg,
+.emoji-choice {
+    font-family: "Google Sans", "Segoe UI", system-ui, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+#message-list li,
+.chat-item {
     background: var(--bg-tile);
     border-radius: 10px;
     padding: 8px 10px;
     margin-bottom: 8px;
     word-wrap: break-word;
+    overflow-wrap: anywhere;
+}
+
+.chat-item.chat-mine {
+    background: rgba(139, 92, 246, 0.16);
+}
+
+.chat-meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.chat-who {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--purple-hot);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-mine .chat-who {
+    color: var(--text);
+}
+
+.chat-time {
+    flex: 0 0 auto;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.chat-body {
+    margin: 0;
+    white-space: pre-wrap;
+    line-height: 1.4;
 }
 
 .drawer-compose {
@@ -704,10 +750,77 @@ a {
     gap: 8px;
     padding: 12px;
     border-top: 1px solid var(--line);
+    align-items: center;
 }
 
 .drawer-compose #msg {
     flex: 1;
+    min-width: 0;
+}
+
+.compose-emoji {
+    position: relative;
+    flex: 0 0 auto;
+}
+
+.emoji-btn {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #0f0f18;
+    color: var(--text);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+}
+
+.emoji-btn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.emoji-btn:hover,
+.emoji-btn[aria-expanded="true"] {
+    border-color: var(--purple);
+    color: var(--purple-hot);
+}
+
+.emoji-panel {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    z-index: 8;
+    width: min(240px, 70vw);
+    max-height: 180px;
+    overflow: auto;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+    padding: 8px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+}
+
+.emoji-panel[hidden] {
+    display: none !important;
+}
+
+.emoji-choice {
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    font-size: 20px;
+    line-height: 1;
+    padding: 6px 0;
+    cursor: pointer;
+}
+
+.emoji-choice:hover,
+.emoji-choice:focus {
+    background: var(--purple-dim);
 }
 
 .people-list {

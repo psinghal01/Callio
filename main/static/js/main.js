@@ -40,6 +40,14 @@
     var remoteSoundReady = false;
     var boundDataChannels = typeof WeakSet === "function" ? new WeakSet() : null;
     var MEDIA_PREFIX = "__CALLIO__/v1 ";
+    var CHAT_MAX_LEN = 2000;
+    var CHAT_MAX_ITEMS = 200;
+    var CHAT_EMOJIS = [
+        "😀", "😃", "😄", "😁", "😅", "😂", "😊", "🙂", "😉", "😍",
+        "😘", "😜", "🤔", "😐", "😴", "😢", "😭", "😡", "👍", "👎",
+        "👏", "🙏", "❤️", "🔥", "✨", "🎉", "😎", "🤗", "🙌", "💯",
+        "🤝", "💪", "👋", "👌", "🌟", "✅", "❌", "📌", "😮", "🤣"
+    ];
     var MIC_ICON_HTML =
         '<svg class="mic-on" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>' +
         '<svg class="mic-slash" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3 3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/></svg>';
@@ -79,6 +87,8 @@
     var btnToggleAudio = document.querySelector("#btn-toggle-audio");
     var btnToggleVideo = document.querySelector("#btn-toggle-video");
     var btnSendMsg = document.querySelector("#btn-send-msg");
+    var btnEmoji = document.querySelector("#btn-emoji");
+    var emojiPanel = document.querySelector("#emoji-panel");
     var messageList = document.querySelector("#message-list");
     var messageInput = document.querySelector("#msg");
     var nameTakenModal = document.querySelector("#name-taken-modal");
@@ -476,19 +486,27 @@
         getDataChannels().forEach(sendMediaStateTo);
     }
 
-    function parseMediaSignal(raw) {
+    function parseCallioEnvelope(raw) {
         if (typeof raw !== "string" || raw.indexOf(MEDIA_PREFIX) !== 0) {
             return null;
         }
         try {
             var data = JSON.parse(raw.slice(MEDIA_PREFIX.length));
-            if (!data || data.t !== "media") {
+            if (!data || (data.t !== "media" && data.t !== "chat")) {
                 return null;
             }
             return data;
         } catch (err) {
             return null;
         }
+    }
+
+    function parseMediaSignal(raw) {
+        var data = parseCallioEnvelope(raw);
+        if (!data || data.t !== "media") {
+            return null;
+        }
+        return data;
     }
 
     function tileForPeer(peerUsername) {
@@ -544,9 +562,13 @@
             sendMediaStateTo(channel);
         });
         channel.addEventListener("message", function (event) {
-            var media = parseMediaSignal(event.data);
-            if (media) {
-                applyRemoteMedia(peerUsername, media);
+            var envelope = parseCallioEnvelope(event.data);
+            if (envelope && envelope.t === "media") {
+                applyRemoteMedia(peerUsername, envelope);
+                return;
+            }
+            if (envelope && envelope.t === "chat") {
+                receiveChat(envelope, peerUsername);
                 return;
             }
             dcOnMessage(event);
@@ -591,6 +613,7 @@
                 el.classList.remove("active");
             }
         });
+        hideEmojiPanel();
         updateGridLayout();
     }
 
@@ -670,6 +693,8 @@
         iceQueues = {};
         clearSoloIdle(true);
         resetChatUnread();
+        clearChatMessages();
+        hideEmojiPanel();
         teardownPeers();
         stopLocalMedia();
         remoteSoundReady = false;
@@ -1665,13 +1690,231 @@
         return { sender: text.slice(0, idx), body: text.slice(idx + 2) };
     }
 
+    function clipChars(text, max) {
+        var chars = Array.from(String(text == null ? "" : text));
+        if (chars.length <= max) {
+            return chars.join("");
+        }
+        return chars.slice(0, Math.max(0, max - 1)).join("") + "…";
+    }
+
     function clipToast(text, max) {
         var value = String(text || "").replace(/\s+/g, " ").trim();
-        max = max || 72;
-        if (value.length <= max) {
-            return value;
+        return clipChars(value, max || 72);
+    }
+
+    function sanitizeChatBody(text) {
+        var value = String(text == null ? "" : text).replace(/\r\n|\r/g, "\n");
+        value = value.replace(/[\u200B-\u200D\uFEFF]/g, "");
+        value = value.replace(/^\s+|\s+$/g, "");
+        if (!value) {
+            return "";
         }
-        return value.slice(0, max - 1) + "…";
+        if (value.length > CHAT_MAX_LEN) {
+            value = value.slice(0, CHAT_MAX_LEN);
+        }
+        return value;
+    }
+
+    function normalizeChatAt(at) {
+        var n = Number(at);
+        var now = Date.now();
+        if (!isFinite(n) || n <= 0) {
+            return now;
+        }
+        if (n < 1e12) {
+            n *= 1000;
+        }
+        if (n > now + 5 * 60 * 1000) {
+            return now;
+        }
+        return n;
+    }
+
+    function formatChatTime(at) {
+        var date = new Date(normalizeChatAt(at));
+        try {
+            return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+        } catch (err) {
+            var hours = date.getHours();
+            var mins = date.getMinutes();
+            return (hours < 10 ? "0" : "") + hours + ":" + (mins < 10 ? "0" : "") + mins;
+        }
+    }
+
+    function pruneChatMessages() {
+        if (!messageList) {
+            return;
+        }
+        while (messageList.children.length > CHAT_MAX_ITEMS) {
+            messageList.removeChild(messageList.firstChild);
+        }
+    }
+
+    function clearChatMessages() {
+        if (messageList) {
+            messageList.textContent = "";
+        }
+        if (messageInput) {
+            messageInput.value = "";
+        }
+    }
+
+    function appendChatMessage(entry) {
+        if (!messageList || !entry) {
+            return;
+        }
+        var body = sanitizeChatBody(entry.body);
+        if (!body) {
+            return;
+        }
+        var at = normalizeChatAt(entry.at);
+        var mine = !!entry.mine;
+        var who = mine ? "You" : String(entry.sender || "Someone").trim() || "Someone";
+        var li = document.createElement("li");
+        li.className = "chat-item" + (mine ? " chat-mine" : "");
+        var meta = document.createElement("div");
+        meta.className = "chat-meta";
+        var nameEl = document.createElement("span");
+        nameEl.className = "chat-who";
+        nameEl.textContent = who;
+        var timeEl = document.createElement("time");
+        timeEl.className = "chat-time";
+        timeEl.dateTime = new Date(at).toISOString();
+        timeEl.textContent = formatChatTime(at);
+        meta.appendChild(nameEl);
+        meta.appendChild(timeEl);
+        var textEl = document.createElement("p");
+        textEl.className = "chat-body";
+        textEl.textContent = body;
+        li.appendChild(meta);
+        li.appendChild(textEl);
+        messageList.appendChild(li);
+        pruneChatMessages();
+        scrollChatToEnd();
+    }
+
+    function receiveChat(data, peerUsername) {
+        if (!data || sessionDead || !inCall) {
+            return;
+        }
+        var body = sanitizeChatBody(data.body);
+        if (!body) {
+            return;
+        }
+        var sender = String(data.sender || peerUsername || "").trim();
+        if (sender && sameName(sender, username)) {
+            return;
+        }
+        appendChatMessage({
+            mine: false,
+            sender: sender || "Someone",
+            body: body,
+            at: data.at
+        });
+        if (isChatOpen()) {
+            return;
+        }
+        unreadChat += 1;
+        renderChatBadge();
+        showToast(clipToast((sender || "Someone") + ": " + body), { chat: true, sound: "chat" });
+    }
+
+    function isEmojiPanelOpen() {
+        return !!(emojiPanel && !emojiPanel.hidden);
+    }
+
+    function hideEmojiPanel() {
+        if (emojiPanel) {
+            emojiPanel.hidden = true;
+        }
+        if (btnEmoji) {
+            btnEmoji.setAttribute("aria-expanded", "false");
+        }
+    }
+
+    function showEmojiPanel() {
+        if (!emojiPanel) {
+            return;
+        }
+        emojiPanel.hidden = false;
+        if (btnEmoji) {
+            btnEmoji.setAttribute("aria-expanded", "true");
+        }
+    }
+
+    function toggleEmojiPanel() {
+        if (isEmojiPanelOpen()) {
+            hideEmojiPanel();
+            return;
+        }
+        showEmojiPanel();
+    }
+
+    function insertEmoji(emoji) {
+        if (!messageInput || !emoji || sessionDead) {
+            return;
+        }
+        var max = messageInput.maxLength > 0 ? messageInput.maxLength : CHAT_MAX_LEN;
+        var value = messageInput.value || "";
+        var start = messageInput.selectionStart;
+        var end = messageInput.selectionEnd;
+        if (typeof start !== "number" || typeof end !== "number") {
+            start = value.length;
+            end = value.length;
+        }
+        var next = value.slice(0, start) + emoji + value.slice(end);
+        if (next.length > max) {
+            return;
+        }
+        messageInput.value = next;
+        var caret = start + emoji.length;
+        try {
+            messageInput.setSelectionRange(caret, caret);
+        } catch (err) {}
+        messageInput.focus();
+    }
+
+    function bindEmojiPicker() {
+        if (!emojiPanel || emojiPanel.dataset.bound === "1") {
+            return;
+        }
+        emojiPanel.dataset.bound = "1";
+        CHAT_EMOJIS.forEach(function (emoji) {
+            var btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "emoji-choice";
+            btn.textContent = emoji;
+            btn.setAttribute("aria-label", "Insert " + emoji);
+            btn.addEventListener("click", function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                insertEmoji(emoji);
+            });
+            emojiPanel.appendChild(btn);
+        });
+        if (btnEmoji) {
+            btnEmoji.addEventListener("click", function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleEmojiPanel();
+            });
+        }
+        document.addEventListener("pointerdown", function (event) {
+            if (!isEmojiPanelOpen()) {
+                return;
+            }
+            var target = event.target;
+            if (emojiPanel.contains(target) || (btnEmoji && btnEmoji.contains(target))) {
+                return;
+            }
+            hideEmojiPanel();
+        });
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                hideEmojiPanel();
+            }
+        });
     }
 
     function ensureLocalMedia() {
@@ -1785,31 +2028,46 @@
     }
     if (messageInput) {
         messageInput.addEventListener("keydown", function (event) {
-            if (event.key === "Enter") {
-                sendMsgOnClick();
+            if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) {
+                return;
             }
+            event.preventDefault();
+            sendMsgOnClick();
         });
     }
+    bindEmojiPicker();
 
     function sendMsgOnClick() {
-        if (!messageInput || sessionDead) {
+        if (!messageInput || sessionDead || !inCall) {
             return;
         }
-        var message = messageInput.value.trim();
+        var message = sanitizeChatBody(messageInput.value);
         if (!message) {
             return;
         }
-        var li = document.createElement("li");
-        li.appendChild(document.createTextNode("Me: " + message));
-        messageList.appendChild(li);
-        scrollChatToEnd();
-        var outbound = username + ": " + message;
+        var at = Date.now();
+        appendChatMessage({
+            mine: true,
+            sender: username,
+            body: message,
+            at: at
+        });
+        var outbound = MEDIA_PREFIX + JSON.stringify({
+            t: "chat",
+            body: message,
+            at: at,
+            sender: username || "Someone"
+        });
         getDataChannels().forEach(function (channel) {
             if (channel && channel.readyState === "open") {
-                channel.send(outbound);
+                try {
+                    channel.send(outbound);
+                } catch (err) {}
             }
         });
         messageInput.value = "";
+        hideEmojiPanel();
+        messageInput.focus();
     }
 
     function firstLetter(name) {
@@ -2412,26 +2670,19 @@
         if (!messageList || sessionDead || !inCall) {
             return;
         }
-        var raw = event && event.data != null ? String(event.data) : "";
-        if (!raw) {
+        if (typeof (event && event.data) !== "string") {
+            return;
+        }
+        var raw = event.data;
+        if (!raw || raw.indexOf(MEDIA_PREFIX) === 0) {
             return;
         }
         var parsed = parseChatLine(raw);
-        if (parsed.sender && sameName(parsed.sender, username)) {
-            return;
-        }
-        var li = document.createElement("li");
-        li.appendChild(document.createTextNode(raw));
-        messageList.appendChild(li);
-        scrollChatToEnd();
-        if (isChatOpen()) {
-            return;
-        }
-        unreadChat += 1;
-        renderChatBadge();
-        var who = parsed.sender || "Someone";
-        var body = parsed.body || raw;
-        showToast(clipToast(who + ": " + body), { chat: true, sound: "chat" });
+        receiveChat({
+            sender: parsed.sender,
+            body: parsed.body || raw,
+            at: Date.now()
+        }, parsed.sender);
     }
 
     function createVideo(peerUsername) {

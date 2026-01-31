@@ -7,7 +7,7 @@
     <title>Callio — {{ room_code }}</title>
     <link rel="icon" type="image/png" href="{% static 'assets/logo.png' %}">
     <link rel="apple-touch-icon" href="{% static 'assets/logo.png' %}">
-    <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}?v=audio9">
+    <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}?v=chat1">
 </head>
 <body class="meet-app">
     {{ room_config|json_script:"room-config" }}
@@ -117,7 +117,13 @@
                     <ul id="message-list"></ul>
                 </div>
                 <div class="drawer-compose">
-                    <input id="msg" maxlength="2000" autocomplete="off" placeholder="Send a message">
+                    <div class="compose-emoji">
+                        <button type="button" id="btn-emoji" class="emoji-btn" title="Emoji" aria-label="Add emoji" aria-expanded="false" aria-controls="emoji-panel" aria-haspopup="true">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-3.5-6.5c.83 0 1.5-.67 1.5-1.5S9.33 11 8.5 11 7 11.67 7 12.5s.67 1.5 1.5 1.5zm7 0c.83 0 1.5-.67 1.5-1.5s-.67-1.5-1.5-1.5-1.5.67-1.5 1.5.67 1.5 1.5 1.5zm-3.5 3.5c2.03 0 3.8-1.11 4.75-2.75h-9.5C8.2 15.89 9.97 17 12 17z"/></svg>
+                        </button>
+                        <div id="emoji-panel" class="emoji-panel" hidden role="listbox" aria-label="Emoji"></div>
+                    </div>
+                    <input id="msg" maxlength="2000" autocomplete="off" placeholder="Send a message" enterkeyhint="send">
                     <button type="button" id="btn-send-msg" class="btn-primary compact">Send</button>
                 </div>
             </aside>
@@ -182,6 +188,6 @@
         </a>
     </footer>
 
-    <script type="text/javascript" src="{% static 'js/main.js' %}?v=audio9"></script>
+    <script type="text/javascript" src="{% static 'js/main.js' %}?v=chat1"></script>
 </body>
 </html>
