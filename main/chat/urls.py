@@ -1,7 +1,8 @@
-from django.contrib import admin
 from django.urls import path
-from .views import main_view
+
+from .views import healthz, main_view
 
 urlpatterns = [
-    path('', main_view , name = 'main_view'),
+    path("", main_view, name="main_view"),
+    path("healthz/", healthz, name="healthz"),
 ]

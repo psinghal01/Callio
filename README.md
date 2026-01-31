@@ -60,7 +60,30 @@ ALICE'S BROWSER          DJANGO SERVER         BOB'S BROWSER
 
 ---
 
-## ▶️ How to Run This Project Locally
+## ▶️ How to Run (Docker — recommended)
+
+Requires Docker and Docker Compose. From the `Callio` folder:
+
+```bash
+cp .env.example .env   # already present if you cloned this setup
+docker compose up --build
+```
+
+Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/) in two tabs, join with different usernames, allow camera/mic.
+
+Health check: [http://127.0.0.1:8000/healthz/](http://127.0.0.1:8000/healthz/)
+
+Stop:
+
+```bash
+docker compose down
+```
+
+Postgres data lives in the `postgres_data` volume. `docker compose down -v` deletes it.
+
+---
+
+## ▶️ How to Run This Project Locally (no Docker)
 
 Follow the steps below to set up and run the application on your local machine.
 
@@ -117,6 +140,9 @@ Once the virtual environment is activated, install all required packages using:
 ```bash
 pip install -r requirements.txt
 ```
+
+Copy `.env.example` to `.env`. For a no-Docker run, set `USE_SQLITE=true` **or** point `POSTGRES_HOST` at a running Postgres (`localhost`). Leave `POSTGRES_HOST=db` only when using Compose.
+
 ---
 
 ### 4️⃣ Run the Django Server
