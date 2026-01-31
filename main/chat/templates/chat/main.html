@@ -7,7 +7,7 @@
     <title>Callio — {{ room_code }}</title>
     <link rel="icon" type="image/png" href="{% static 'assets/logo.png' %}">
     <link rel="apple-touch-icon" href="{% static 'assets/logo.png' %}">
-    <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}?v=chat1">
+    <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}?v=chat2">
 </head>
 <body class="meet-app">
     {{ room_config|json_script:"room-config" }}
@@ -110,8 +110,14 @@
 
             <aside id="drawer-chat" class="drawer" hidden>
                 <header class="drawer-head">
-                    <h3>In-call messages</h3>
-                    <button type="button" class="icon-close" data-close-drawer="chat" aria-label="Close chat">×</button>
+                    <div class="chat-head-copy">
+                        <h3>In-call messages</h3>
+                        <p id="chat-target" class="chat-target" hidden></p>
+                    </div>
+                    <div class="chat-head-actions">
+                        <button type="button" id="btn-chat-everyone" class="text-btn" hidden>Everyone</button>
+                        <button type="button" class="icon-close" data-close-drawer="chat" aria-label="Close chat">×</button>
+                    </div>
                 </header>
                 <div id="messages">
                     <ul id="message-list"></ul>
@@ -188,6 +194,6 @@
         </a>
     </footer>
 
-    <script type="text/javascript" src="{% static 'js/main.js' %}?v=chat1"></script>
+    <script type="text/javascript" src="{% static 'js/main.js' %}?v=chat2"></script>
 </body>
 </html>

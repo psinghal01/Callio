@@ -13,6 +13,7 @@ Browser video calls with in-call chat. Django + Channels handle rooms and signal
 - Letter avatar when camera is off; mic icon on tiles
 - Pin a tile; people drawer (in call + waiting)
 - In-call chat on the data channel: timestamps, emoji, unread badge
+- Private message from the people list (data channel to that person only)
 - Join/leave toasts; host handoff if the host leaves
 - Solo idle: leave after 2 minutes alone (link still works)
 - STUN/TURN (coturn); Redis room state (~24h); `/healthz/`
@@ -38,6 +39,7 @@ Browser ══ WebRTC (audio, video, chat) ══ Browser
 cp .env.example .env
 docker compose up --build
 ```
+You can access app on these links
 
 App: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)  
 Health: [http://127.0.0.1:8000/healthz/](http://127.0.0.1:8000/healthz/)
@@ -50,7 +52,7 @@ Camera and microphone need a secure context. Use HTTPS, or on Chrome Android add
 
 ```bash
 docker compose down      # stop
-docker compose down -v   # also drop the Postgres volume
+docker compose down -v   # also drop the db volume
 ```
 
 ## ICE (STUN / TURN)

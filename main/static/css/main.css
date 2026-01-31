@@ -644,6 +644,31 @@ a {
     align-items: center;
     padding: 14px 16px;
     border-bottom: 1px solid var(--line);
+    gap: 10px;
+}
+
+.chat-head-copy {
+    min-width: 0;
+}
+
+.chat-head-copy h3 {
+    margin: 0;
+}
+
+.chat-target {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--purple-hot);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chat-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
 }
 
 .icon-close {
@@ -709,6 +734,14 @@ a {
 
 .chat-item.chat-mine {
     background: rgba(139, 92, 246, 0.16);
+}
+
+.chat-item.chat-private {
+    border: 1px solid rgba(139, 92, 246, 0.35);
+}
+
+.chat-item[hidden] {
+    display: none !important;
 }
 
 .chat-meta {
@@ -843,6 +876,10 @@ a {
     margin-bottom: 0;
 }
 
+.people-list li.is-dm {
+    border: 1px solid var(--purple);
+}
+
 .people-name {
     min-width: 0;
     flex: 1 1 auto;
@@ -858,6 +895,7 @@ a {
     flex: 0 0 auto;
 }
 
+.btn-dm,
 .btn-admit,
 .btn-deny {
     border: none;
@@ -872,10 +910,20 @@ a {
     flex-shrink: 0;
 }
 
+.btn-dm svg,
 .btn-admit svg,
 .btn-deny svg {
     width: 18px;
     height: 18px;
+}
+
+.btn-dm {
+    background: #2a2a3a;
+}
+
+.btn-dm:hover,
+.people-list li.is-dm .btn-dm {
+    background: var(--purple);
 }
 
 .btn-admit {
@@ -894,6 +942,7 @@ a {
     background: var(--danger-dim);
 }
 
+.btn-dm:focus-visible,
 .btn-admit:focus-visible,
 .btn-deny:focus-visible {
     outline: 2px solid var(--purple-hot);

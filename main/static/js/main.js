@@ -28,6 +28,7 @@
     var audioOn = false;
     var videoOn = false;
     var unreadChat = 0;
+    var chatTarget = "";
     var recentlyReplaced = {};
     var knownWaiters = {};
     var waitersPrimed = false;
@@ -91,6 +92,8 @@
     var emojiPanel = document.querySelector("#emoji-panel");
     var messageList = document.querySelector("#message-list");
     var messageInput = document.querySelector("#msg");
+    var chatTargetEl = document.querySelector("#chat-target");
+    var btnChatEveryone = document.querySelector("#btn-chat-everyone");
     var nameTakenModal = document.querySelector("#name-taken-modal");
     var nameTakenInput = document.querySelector("#name-taken-input");
     var nameTakenError = document.querySelector("#name-taken-error");
@@ -693,6 +696,7 @@
         iceQueues = {};
         clearSoloIdle(true);
         resetChatUnread();
+        clearChatTarget();
         clearChatMessages();
         hideEmojiPanel();
         teardownPeers();
@@ -840,7 +844,27 @@
             admittedList.innerHTML = "";
             admitted.forEach(function (person) {
                 var li = document.createElement("li");
-                li.appendChild(peopleName(person.username + (person.is_host ? " · host" : "")));
+                var display = person.username || "";
+                li.appendChild(peopleName(display + (person.is_host ? " · host" : "")));
+                if (display && !sameName(display, username)) {
+                    if (sameName(display, chatTarget)) {
+                        li.classList.add("is-dm");
+                    }
+                    var actions = document.createElement("span");
+                    actions.className = "people-actions";
+                    var dm = iconButton(
+                        "btn-dm",
+                        "Message " + display,
+                        "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"
+                    );
+                    dm.addEventListener("click", function (event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openPrivateChat(display);
+                    });
+                    actions.appendChild(dm);
+                    li.appendChild(actions);
+                }
                 admittedList.appendChild(li);
             });
         }
@@ -1758,6 +1782,86 @@
         if (messageInput) {
             messageInput.value = "";
         }
+        applyChatFilter();
+    }
+
+    function dataChannelFor(peerUsername) {
+        var key = resolvePeerKey(peerUsername);
+        var entry = mapPeers[key] || mapPeers[peerUsername];
+        var channel = entry && entry[1];
+        if (channel && channel.readyState === "open") {
+            return channel;
+        }
+        return null;
+    }
+
+    function clearChatTarget() {
+        chatTarget = "";
+        syncChatTargetUi();
+    }
+
+    function viewingChatWith(peerUsername) {
+        if (!chatTarget) {
+            return !peerUsername;
+        }
+        return sameName(chatTarget, peerUsername);
+    }
+
+    function applyChatFilter() {
+        if (!messageList) {
+            return;
+        }
+        var items = messageList.querySelectorAll(".chat-item");
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            var peer = item.getAttribute("data-chat-peer") || "";
+            item.hidden = chatTarget ? !sameName(peer, chatTarget) : !!peer;
+        }
+        scrollChatToEnd();
+    }
+
+    function syncChatTargetUi() {
+        var privateOn = !!chatTarget;
+        if (chatTargetEl) {
+            chatTargetEl.hidden = !privateOn;
+            if (privateOn) {
+                chatTargetEl.textContent = "Private · " + chatTarget;
+            }
+        }
+        if (btnChatEveryone) {
+            btnChatEveryone.hidden = !privateOn;
+        }
+        if (messageInput) {
+            messageInput.placeholder = privateOn
+                ? "Message " + chatTarget
+                : "Send a message";
+            messageInput.setAttribute(
+                "aria-label",
+                privateOn ? "Private message to " + chatTarget : "Send a message to everyone"
+            );
+        }
+        applyChatFilter();
+    }
+
+    function showChatDrawer() {
+        if (chatDrawer && !chatDrawer.hidden) {
+            applyChatFilter();
+            return;
+        }
+        toggleDrawer("chat");
+    }
+
+    function openPrivateChat(peerUsername) {
+        var name = String(peerUsername || "").trim();
+        if (!name || sameName(name, username) || sessionDead || !inCall) {
+            return;
+        }
+        chatTarget = name;
+        syncChatTargetUi();
+        showChatDrawer();
+        if (messageInput) {
+            messageInput.focus();
+        }
     }
 
     function appendChatMessage(entry) {
@@ -1770,14 +1874,19 @@
         }
         var at = normalizeChatAt(entry.at);
         var mine = !!entry.mine;
+        var isPrivate = !!entry.private;
         var who = mine ? "You" : String(entry.sender || "Someone").trim() || "Someone";
+        var other = String(entry.peer || (mine ? chatTarget : who) || "").trim();
         var li = document.createElement("li");
-        li.className = "chat-item" + (mine ? " chat-mine" : "");
+        li.className = "chat-item" + (mine ? " chat-mine" : "") + (isPrivate ? " chat-private" : "");
+        if (isPrivate && other) {
+            li.setAttribute("data-chat-peer", other);
+        }
         var meta = document.createElement("div");
         meta.className = "chat-meta";
         var nameEl = document.createElement("span");
         nameEl.className = "chat-who";
-        nameEl.textContent = who;
+        nameEl.textContent = isPrivate ? (mine ? "You · Private" : who + " · Private") : who;
         var timeEl = document.createElement("time");
         timeEl.className = "chat-time";
         timeEl.dateTime = new Date(at).toISOString();
@@ -1791,7 +1900,7 @@
         li.appendChild(textEl);
         messageList.appendChild(li);
         pruneChatMessages();
-        scrollChatToEnd();
+        applyChatFilter();
     }
 
     function receiveChat(data, peerUsername) {
@@ -1802,22 +1911,29 @@
         if (!body) {
             return;
         }
-        var sender = String(data.sender || peerUsername || "").trim();
+        var sender = String(peerUsername || data.sender || "").trim();
         if (sender && sameName(sender, username)) {
             return;
         }
+        var isPrivate = !!data.private;
         appendChatMessage({
             mine: false,
             sender: sender || "Someone",
+            peer: sender,
             body: body,
-            at: data.at
+            at: data.at,
+            private: isPrivate
         });
-        if (isChatOpen()) {
+        var watching = isPrivate ? viewingChatWith(sender) : viewingChatWith("");
+        if (isChatOpen() && watching) {
             return;
         }
         unreadChat += 1;
         renderChatBadge();
-        showToast(clipToast((sender || "Someone") + ": " + body), { chat: true, sound: "chat" });
+        var label = isPrivate
+            ? "Private from " + (sender || "Someone") + ": " + body
+            : (sender || "Someone") + ": " + body;
+        showToast(clipToast(label), { chat: true, sound: "chat" });
     }
 
     function isEmojiPanelOpen() {
@@ -2036,6 +2152,15 @@
         });
     }
     bindEmojiPicker();
+    if (btnChatEveryone) {
+        btnChatEveryone.addEventListener("click", function (event) {
+            event.preventDefault();
+            clearChatTarget();
+            if (messageInput) {
+                messageInput.focus();
+            }
+        });
+    }
 
     function sendMsgOnClick() {
         if (!messageInput || sessionDead || !inCall) {
@@ -2046,24 +2171,50 @@
             return;
         }
         var at = Date.now();
-        appendChatMessage({
-            mine: true,
-            sender: username,
-            body: message,
-            at: at
-        });
+        var privateOn = !!chatTarget;
+        var target = privateOn ? chatTarget : "";
         var outbound = MEDIA_PREFIX + JSON.stringify({
             t: "chat",
             body: message,
             at: at,
-            sender: username || "Someone"
+            sender: username || "Someone",
+            private: privateOn,
+            to: target || undefined
         });
-        getDataChannels().forEach(function (channel) {
-            if (channel && channel.readyState === "open") {
-                try {
-                    channel.send(outbound);
-                } catch (err) {}
+        if (privateOn) {
+            var channel = dataChannelFor(target);
+            if (!channel) {
+                showToast("Can't message " + target + " until they are connected.");
+                return;
             }
+            try {
+                channel.send(outbound);
+            } catch (err) {
+                showToast("Couldn't send that private message.");
+                return;
+            }
+        } else {
+            var sent = 0;
+            getDataChannels().forEach(function (item) {
+                if (item && item.readyState === "open") {
+                    try {
+                        item.send(outbound);
+                        sent += 1;
+                    } catch (err) {}
+                }
+            });
+            if (!sent && Object.keys(mapPeers).length) {
+                showToast("Chat isn't connected yet. Try again in a moment.");
+                return;
+            }
+        }
+        appendChatMessage({
+            mine: true,
+            sender: username,
+            peer: target,
+            body: message,
+            at: at,
+            private: privateOn
         });
         messageInput.value = "";
         hideEmojiPanel();
@@ -2384,6 +2535,11 @@
         delete iceQueues[nameKey(peerUsername)];
         if (sameName(pinnedPeer, key) || sameName(pinnedPeer, peerUsername)) {
             pinnedPeer = "";
+        }
+        if (sameName(chatTarget, key) || sameName(chatTarget, peerUsername)) {
+            var leftName = chatTarget;
+            clearChatTarget();
+            showToast(clipToast(leftName + " left") + ". Chat is back to everyone.");
         }
         updateGridLayout();
     }
