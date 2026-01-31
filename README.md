@@ -11,6 +11,7 @@ Browser video calls with in-call chat. Django + Channels handle rooms and signal
 - Same display name is one seat — second tab can take over
 - Mesh video/audio; mic and camera start off
 - Letter avatar when camera is off; mic icon on tiles
+- Screen share (replaceTrack, no extra offer); picker excludes this tab so the call stays audible. Hidden when the browser cannot share.
 - Pin a tile; people drawer (in call + waiting)
 - In-call chat on the data channel: timestamps, emoji, unread badge
 - Private message from the people list (data channel to that person only)
@@ -24,7 +25,7 @@ Browser video calls with in-call chat. Django + Channels handle rooms and signal
 2. Others wait unless **Open for all** is on (max 20). Same display name is one seat and can take over.
 3. Admitted clients open a WebSocket. Existing peers send an SDP offer; the new peer answers. ICE candidates trickle on the same socket.
 4. Browsers connect peer-to-peer (or via TURN). Mic and camera start **off**.
-5. Chat and cam/mic state use the WebRTC data channel, not the socket. Nothing is stored.
+5. Chat, cam/mic, and screen-share state use the WebRTC data channel, not the socket. Nothing is stored.
 
 Rooms live in Redis (~24h TTL). Postgres is for Django only. `GET /healthz/` checks the database and Redis.
 
@@ -39,7 +40,7 @@ Browser ══ WebRTC (audio, video, chat) ══ Browser
 cp .env.example .env
 docker compose up --build
 ```
-You can access app on these links
+You can access app on these links when working locally !!
 
 App: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)  
 Health: [http://127.0.0.1:8000/healthz/](http://127.0.0.1:8000/healthz/)

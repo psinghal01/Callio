@@ -27,6 +27,10 @@
     var mediaControlsBound = false;
     var audioOn = false;
     var videoOn = false;
+    var sharingScreen = false;
+    var screenTrack = null;
+    var screenPreview = null;
+    var screenShareBusy = false;
     var unreadChat = 0;
     var chatTarget = "";
     var recentlyReplaced = {};
@@ -38,6 +42,7 @@
     var LOCAL_PEER = "__local__";
     var remoteVideoDesired = {};
     var remoteAudioDesired = {};
+    var remoteScreenDesired = {};
     var remoteSoundReady = false;
     var boundDataChannels = typeof WeakSet === "function" ? new WeakSet() : null;
     var MEDIA_PREFIX = "__CALLIO__/v1 ";
@@ -87,6 +92,7 @@
     var localLetter = document.querySelector("#local-letter");
     var btnToggleAudio = document.querySelector("#btn-toggle-audio");
     var btnToggleVideo = document.querySelector("#btn-toggle-video");
+    var btnToggleScreen = document.querySelector("#btn-toggle-screen");
     var btnSendMsg = document.querySelector("#btn-send-msg");
     var btnEmoji = document.querySelector("#btn-emoji");
     var emojiPanel = document.querySelector("#emoji-panel");
@@ -459,6 +465,104 @@
         return !!(videoOn && localStream && localStream.getVideoTracks()[0]);
     }
 
+    function liveScreenTrack() {
+        return screenTrack && screenTrack.readyState === "live" ? screenTrack : null;
+    }
+
+    function outboundVideoTrack() {
+        if (sharingScreen) {
+            return liveScreenTrack();
+        }
+        return (localStream && localStream.getVideoTracks()[0]) || null;
+    }
+
+    function localVideoLive() {
+        return !!(liveScreenTrack() || localCameraOn());
+    }
+
+    function displayShareSupported() {
+        return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === "function");
+    }
+
+    function displayShareConstraints(mode) {
+        if (mode === "monitor") {
+            return {
+                video: { displaySurface: "monitor" },
+                audio: false,
+                preferCurrentTab: false,
+                selfBrowserSurface: "exclude",
+                systemAudio: "exclude",
+                surfaceSwitching: "include",
+                monitorTypeSurfaces: "include",
+            };
+        }
+        if (mode === "exclude-tab") {
+            return {
+                video: true,
+                audio: false,
+                preferCurrentTab: false,
+                selfBrowserSurface: "exclude",
+                systemAudio: "exclude",
+                surfaceSwitching: "include",
+                monitorTypeSurfaces: "include",
+            };
+        }
+        return { video: true, audio: false };
+    }
+
+    function requestDisplayMedia() {
+        var modes = ["monitor", "exclude-tab", "basic"];
+        function attempt(index) {
+            if (index >= modes.length) {
+                return Promise.reject(new Error("no-display"));
+            }
+            var request;
+            try {
+                request = navigator.mediaDevices.getDisplayMedia(displayShareConstraints(modes[index]));
+            } catch (err) {
+                return attempt(index + 1);
+            }
+            return request.catch(function (err) {
+                var name = err && err.name;
+                if (name === "NotAllowedError" || name === "AbortError") {
+                    throw err;
+                }
+                return attempt(index + 1);
+            });
+        }
+        return attempt(0);
+    }
+
+    function displaySurfaceOf(track) {
+        if (!track || typeof track.getSettings !== "function") {
+            return "";
+        }
+        try {
+            var settings = track.getSettings() || {};
+            return settings.displaySurface || "";
+        } catch (err) {
+            return "";
+        }
+    }
+
+    function warnIfCapturingMeetingTab(track) {
+        if (displaySurfaceOf(track) !== "browser") {
+            return;
+        }
+        showToast("This tab can mute the call. Share a window or the whole screen.");
+    }
+
+    function hintScreenTrack(track) {
+        if (!track) {
+            return;
+        }
+        try {
+            if ("contentHint" in track) {
+                track.contentHint = "detail";
+            }
+        } catch (err) {}
+    }
+
     function localMicOn() {
         if (!audioOn || !localStream) {
             return false;
@@ -471,8 +575,9 @@
     function mediaPayload() {
         return MEDIA_PREFIX + JSON.stringify({
             t: "media",
-            video: localCameraOn(),
+            video: localVideoLive(),
             audio: localMicOn(),
+            screen: !!liveScreenTrack(),
         });
     }
 
@@ -530,12 +635,20 @@
         if (Object.prototype.hasOwnProperty.call(data, "audio")) {
             remoteAudioDesired[peerUsername] = !!data.audio;
         }
+        if (Object.prototype.hasOwnProperty.call(data, "screen")) {
+            remoteScreenDesired[peerUsername] = !!data.screen;
+        }
         var tile = tileForPeer(peerUsername);
         if (!tile) {
             return;
         }
         ensureTileChrome(tile, peerUsername);
         setTileMicOff(tile, remoteAudioDesired[peerUsername] !== true);
+        setTileSharing(tile, remoteScreenDesired[peerUsername] === true);
+        if (remoteScreenDesired[peerUsername] === true) {
+            setTileVideoOff(tile, false);
+            return;
+        }
         if (Object.prototype.hasOwnProperty.call(remoteVideoDesired, peerUsername)) {
             if (!remoteVideoDesired[peerUsername]) {
                 setTileVideoOff(tile, true);
@@ -647,6 +760,7 @@
     }
 
     function stopLocalMedia() {
+        stopScreenShare({ silent: true });
         if (localStream) {
             localStream.getTracks().forEach(function (track) {
                 try {
@@ -663,6 +777,7 @@
         videoOn = false;
         setTileVideoOff(localTile, true);
         setTileMicOff(localTile, true);
+        setTileSharing(localTile, false);
         syncMediaButtons();
     }
 
@@ -1583,6 +1698,32 @@
         hideHearHints();
     }
 
+    function attachLocalVideoToPeers(track) {
+        Object.keys(mapPeers).forEach(function (name) {
+            var peer = mapPeers[name] && mapPeers[name][0];
+            if (!peer || typeof peer.getTransceivers !== "function") {
+                return;
+            }
+            peer.getTransceivers().forEach(function (tr) {
+                var kind = "";
+                if (tr.sender && tr.sender.track) {
+                    kind = tr.sender.track.kind;
+                } else if (tr.receiver && tr.receiver.track) {
+                    kind = tr.receiver.track.kind;
+                }
+                if (kind !== "video" || !tr.sender) {
+                    return;
+                }
+                if (tr.sender.track === track) {
+                    return;
+                }
+                try {
+                    tr.sender.replaceTrack(track || null);
+                } catch (err) {}
+            });
+        });
+    }
+
     function attachLocalAudioToPeers() {
         if (!localStream) {
             return;
@@ -1633,16 +1774,35 @@
             audioTracks[0].enabled = audioOn;
         }
         if (videoTracks[0]) {
-            videoTracks[0].enabled = videoOn;
-        } else if (videoOn) {
+            videoTracks[0].enabled = videoOn && !liveScreenTrack();
+        } else if (videoOn && !liveScreenTrack()) {
             videoOn = false;
         }
         attachLocalAudioToPeers();
-        if (localVideo) {
-            localVideo.srcObject = localStream;
-            localVideo.muted = true;
+        var outbound = outboundVideoTrack();
+        if (outbound) {
+            outbound.enabled = true;
         }
-        setTileVideoOff(localTile, !localCameraOn());
+        attachLocalVideoToPeers(outbound);
+        if (localVideo) {
+            var preview = localStream;
+            if (liveScreenTrack()) {
+                if (!screenPreview) {
+                    screenPreview = new MediaStream([screenTrack]);
+                }
+                preview = screenPreview;
+            }
+            if (localVideo.srcObject !== preview) {
+                localVideo.srcObject = preview;
+            }
+            localVideo.muted = true;
+            var playPromise = localVideo.play();
+            if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(function () {});
+            }
+        }
+        setTileVideoOff(localTile, !localVideoLive());
+        setTileSharing(localTile, !!liveScreenTrack());
         setTileMicOff(localTile, !localMicOn());
         broadcastMediaState();
         syncMediaButtons();
@@ -1664,6 +1824,16 @@
             btnToggleVideo.classList.toggle("off", !videoOn);
             btnToggleVideo.title = videoOn ? "Turn off camera" : "Turn on camera";
             btnToggleVideo.setAttribute("aria-label", btnToggleVideo.title);
+        }
+        if (btnToggleScreen) {
+            var sharing = !!liveScreenTrack();
+            var canShare = displayShareSupported();
+            btnToggleScreen.hidden = !canShare;
+            btnToggleScreen.classList.toggle("active", sharing);
+            btnToggleScreen.classList.remove("off");
+            btnToggleScreen.disabled = !canShare || (!!screenShareBusy && !sharing);
+            btnToggleScreen.title = sharing ? "Stop sharing" : "Share screen";
+            btnToggleScreen.setAttribute("aria-label", btnToggleScreen.title);
         }
     }
 
@@ -2113,10 +2283,125 @@
             })
             .catch(function () {
                 videoOn = false;
-                setTileVideoOff(localTile, true);
+                if (!liveScreenTrack()) {
+                    setTileVideoOff(localTile, true);
+                }
                 syncMediaButtons();
                 broadcastMediaState();
                 showToast(mediaErrorMessage());
+            });
+    }
+
+    function onScreenTrackEnded() {
+        stopScreenShare({ silent: false });
+    }
+
+    function stopScreenShare(options) {
+        options = options || {};
+        var wasSharing = !!(sharingScreen || screenTrack);
+        var track = screenTrack;
+        screenTrack = null;
+        sharingScreen = false;
+        screenPreview = null;
+        screenShareBusy = false;
+        if (track) {
+            try {
+                track.removeEventListener("ended", onScreenTrackEnded);
+            } catch (err) {}
+            if (track.readyState !== "ended") {
+                try {
+                    track.stop();
+                } catch (err) {}
+            }
+        }
+        attachLocalVideoToPeers(outboundVideoTrack());
+        applyLocalTrackState();
+        if (!options.silent && wasSharing && inCall && !sessionDead) {
+            showToast("Screen share stopped");
+        }
+    }
+
+    function discardMediaStream(stream) {
+        if (!stream || !stream.getTracks) {
+            return;
+        }
+        stream.getTracks().forEach(function (item) {
+            try { item.stop(); } catch (err) {}
+        });
+    }
+
+    function startScreenShare() {
+        if (!inCall || sessionDead || screenShareBusy) {
+            return;
+        }
+        if (liveScreenTrack()) {
+            stopScreenShare({ silent: false });
+            return;
+        }
+        if (!displayShareSupported()) {
+            showToast("This browser can't share a screen.");
+            return;
+        }
+        if (window.isSecureContext === false) {
+            showToast("Screen share needs a secure context. Use HTTPS, or on Chrome add this site under chrome://flags → Insecure origins treated as secure.");
+            return;
+        }
+        screenShareBusy = true;
+        syncMediaButtons();
+        requestDisplayMedia()
+            .then(function (stream) {
+                screenShareBusy = false;
+                if (sessionDead || !inCall) {
+                    discardMediaStream(stream);
+                    syncMediaButtons();
+                    return;
+                }
+                var track = stream.getVideoTracks()[0] || null;
+                stream.getTracks().forEach(function (item) {
+                    if (item !== track) {
+                        try { item.stop(); } catch (err) {}
+                    }
+                });
+                if (!track || track.readyState === "ended") {
+                    discardMediaStream(stream);
+                    syncMediaButtons();
+                    showToast("Couldn't share that screen.");
+                    return;
+                }
+                if (screenTrack) {
+                    stopScreenShare({ silent: true });
+                }
+                hintScreenTrack(track);
+                screenTrack = track;
+                sharingScreen = true;
+                track.addEventListener("ended", onScreenTrackEnded);
+                attachLocalVideoToPeers(track);
+                applyLocalTrackState();
+                unlockRemoteAudio();
+                warnIfCapturingMeetingTab(track);
+                window.setTimeout(function () {
+                    if (liveScreenTrack()) {
+                        broadcastMediaState();
+                        unlockRemoteAudio();
+                    }
+                }, 250);
+            })
+            .catch(function (err) {
+                screenShareBusy = false;
+                syncMediaButtons();
+                var name = err && err.name;
+                if (name === "NotAllowedError" || name === "AbortError") {
+                    return;
+                }
+                if (name === "NotFoundError" || name === "NotReadableError" || (err && err.message === "no-display")) {
+                    showToast("No screen is available to share.");
+                    return;
+                }
+                if (name === "OverconstrainedError" || name === "TypeError") {
+                    showToast("This browser couldn't open the screen picker.");
+                    return;
+                }
+                showToast("Couldn't start screen share.");
             });
     }
 
@@ -2130,6 +2415,16 @@
         }
         if (btnToggleVideo) {
             btnToggleVideo.addEventListener("click", toggleVideo);
+        }
+        if (btnToggleScreen) {
+            if (!displayShareSupported()) {
+                btnToggleScreen.hidden = true;
+            } else {
+                btnToggleScreen.addEventListener("click", function () {
+                    unlockRemoteAudio();
+                    startScreenShare();
+                });
+            }
         }
         if (callBar) {
             callBar.addEventListener("pointerdown", unlockRemoteAudio);
@@ -2248,6 +2543,33 @@
         tile.classList.toggle("video-off", !!off);
     }
 
+    function setTileSharing(tile, on) {
+        if (!tile) {
+            return;
+        }
+        ensureTileShareBadge(tile);
+        tile.classList.toggle("is-sharing", !!on);
+        var badge = tile.querySelector(".tile-share");
+        if (badge) {
+            badge.hidden = !on;
+        }
+    }
+
+    function ensureTileShareBadge(tile) {
+        if (!tile) {
+            return;
+        }
+        var chrome = tile.querySelector(".tile-chrome");
+        if (!chrome || chrome.querySelector(".tile-share")) {
+            return;
+        }
+        var badge = document.createElement("span");
+        badge.className = "tile-share";
+        badge.hidden = true;
+        badge.textContent = "Sharing";
+        chrome.appendChild(badge);
+    }
+
     function setTileMicOff(tile, off) {
         if (!tile) {
             return;
@@ -2290,6 +2612,7 @@
             chrome.insertBefore(micIcon, chrome.firstChild);
         }
         setTileMicOff(tile, true);
+        ensureTileShareBadge(tile);
         return chrome;
     }
 
@@ -2440,14 +2763,27 @@
             return;
         }
         function sync() {
+            var sharing = remoteScreenDesired[peerUsername] === true;
+            var ended = track.readyState === "ended";
+            var hasFrames = !!(videoEl && videoEl.videoWidth > 1 && videoEl.videoHeight > 1);
+            setTileSharing(tile, sharing);
+            if (sharing) {
+                setTileVideoOff(tile, ended);
+                return;
+            }
+            if (ended) {
+                setTileVideoOff(tile, true);
+                return;
+            }
+            if (hasFrames && !track.muted) {
+                setTileVideoOff(tile, false);
+                return;
+            }
             if (remoteVideoDesired[peerUsername] === false) {
                 setTileVideoOff(tile, true);
                 return;
             }
-            var ended = track.readyState === "ended";
-            var muted = !!track.muted;
-            var noFrames = !videoEl || videoEl.videoWidth < 2 || videoEl.videoHeight < 2;
-            setTileVideoOff(tile, ended || muted || noFrames);
+            setTileVideoOff(tile, !!track.muted || !hasFrames);
         }
         track.addEventListener("mute", sync);
         track.addEventListener("unmute", sync);
@@ -2531,6 +2867,8 @@
         delete remoteVideoDesired[peerUsername];
         delete remoteAudioDesired[key];
         delete remoteAudioDesired[peerUsername];
+        delete remoteScreenDesired[key];
+        delete remoteScreenDesired[peerUsername];
         delete iceQueues[key];
         delete iceQueues[nameKey(peerUsername)];
         if (sameName(pinnedPeer, key) || sameName(pinnedPeer, peerUsername)) {
@@ -2783,43 +3121,84 @@
         });
     }
 
-    function addLocalTracks(peer) {
-        var audio = localStream.getAudioTracks()[0] || null;
-        var video = localStream.getVideoTracks()[0] || null;
-        var transceivers = peer.getTransceivers();
-        if (!transceivers.length) {
-            if (audio) {
-                peer.addTrack(audio, localStream);
+    function transceiverKind(tr, index) {
+        if (tr && tr.sender && tr.sender.track) {
+            return tr.sender.track.kind;
+        }
+        if (tr && tr.receiver && tr.receiver.track) {
+            return tr.receiver.track.kind;
+        }
+        if (index === 0) {
+            return "audio";
+        }
+        if (index === 1) {
+            return "video";
+        }
+        return "";
+    }
+
+    function findTransceiver(peer, kind) {
+        if (!peer || typeof peer.getTransceivers !== "function") {
+            return null;
+        }
+        var list = peer.getTransceivers();
+        for (var i = 0; i < list.length; i++) {
+            if (transceiverKind(list[i], i) === kind) {
+                return list[i];
             }
-            if (video) {
-                peer.addTrack(video, localStream);
+        }
+        return null;
+    }
+
+    function streamForTrack(track) {
+        if (track && localStream && localStream.getTracks().indexOf(track) !== -1) {
+            return localStream;
+        }
+        if (track && liveScreenTrack() && track === screenTrack) {
+            if (!screenPreview) {
+                screenPreview = new MediaStream([screenTrack]);
+            }
+            return screenPreview;
+        }
+        return localStream;
+    }
+
+    function bindSenderTrack(peer, kind, track) {
+        if (!peer) {
+            return;
+        }
+        var tr = findTransceiver(peer, kind);
+        if (!tr && typeof peer.addTransceiver === "function") {
+            try {
+                tr = peer.addTransceiver(kind, { direction: "sendrecv" });
+            } catch (err) {
+                tr = null;
+            }
+        }
+        if (tr && tr.sender) {
+            if (tr.sender.track !== (track || null)) {
+                try {
+                    tr.sender.replaceTrack(track || null);
+                } catch (err) {}
+            }
+            if (tr.direction === "recvonly" || tr.direction === "inactive") {
+                try {
+                    tr.direction = "sendrecv";
+                } catch (err) {}
             }
             return;
         }
-        transceivers.forEach(function (tr, index) {
-            var kind = "";
-            if (tr.receiver && tr.receiver.track) {
-                kind = tr.receiver.track.kind;
-            } else if (tr.sender && tr.sender.track) {
-                kind = tr.sender.track.kind;
-            } else if (index === 0) {
-                kind = "audio";
-            } else if (index === 1) {
-                kind = "video";
-            }
-            var track = kind === "audio" ? audio : kind === "video" ? video : null;
-            if (!track || !tr.sender) {
-                return;
-            }
+        if (track) {
             try {
-                tr.sender.replaceTrack(track);
-                if (tr.direction === "recvonly" || tr.direction === "inactive") {
-                    tr.direction = "sendrecv";
-                }
-            } catch (err) {
-                peer.addTrack(track, localStream);
-            }
-        });
+                peer.addTrack(track, streamForTrack(track));
+            } catch (err) {}
+        }
+    }
+
+    function addLocalTracks(peer) {
+        var audio = (localStream && localStream.getAudioTracks()[0]) || null;
+        bindSenderTrack(peer, "audio", audio);
+        bindSenderTrack(peer, "video", outboundVideoTrack());
     }
 
     function dcOnMessage(event) {
@@ -2890,6 +3269,9 @@
         }
         if (Object.prototype.hasOwnProperty.call(remoteAudioDesired, peerUsername)) {
             stored.audio = remoteAudioDesired[peerUsername];
+        }
+        if (Object.prototype.hasOwnProperty.call(remoteScreenDesired, peerUsername)) {
+            stored.screen = remoteScreenDesired[peerUsername];
         }
         if (Object.keys(stored).length) {
             applyRemoteMedia(peerUsername, stored);

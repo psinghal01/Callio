@@ -7,7 +7,7 @@
     <title>Callio — {{ room_code }}</title>
     <link rel="icon" type="image/png" href="{% static 'assets/logo.png' %}">
     <link rel="apple-touch-icon" href="{% static 'assets/logo.png' %}">
-    <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}?v=chat2">
+    <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}?v=share2">
 </head>
 <body class="meet-app">
     {{ room_config|json_script:"room-config" }}
@@ -178,6 +178,9 @@
         <button type="button" id="btn-toggle-video" class="bar-btn off" title="Camera" aria-label="Turn on camera">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
         </button>
+        <button type="button" id="btn-toggle-screen" class="bar-btn" title="Share screen" aria-label="Share screen">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.11-.9-2-2-2H4c-1.11 0-2 .89-2 2v10c0 1.1.89 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6zm8 9 4-4h-3V8h-2v3H8l4 4z"/></svg>
+        </button>
         <button type="button" id="btn-chat" class="bar-btn" title="Chat" aria-label="Toggle chat">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
             <span id="chat-badge" class="badge" hidden>0</span>
@@ -194,6 +197,6 @@
         </a>
     </footer>
 
-    <script type="text/javascript" src="{% static 'js/main.js' %}?v=chat2"></script>
+    <script type="text/javascript" src="{% static 'js/main.js' %}?v=share2"></script>
 </body>
 </html>

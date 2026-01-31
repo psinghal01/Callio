@@ -216,6 +216,11 @@ a {
     display: block;
 }
 
+.tile.is-sharing video {
+    object-fit: contain;
+    background: #0b0b12;
+}
+
 .tile.video-off video {
     pointer-events: none;
 }
@@ -359,6 +364,22 @@ a {
 
 .tile-mic.is-off .mic-slash {
     display: block;
+}
+
+.tile-share {
+    flex: 0 0 auto;
+    background: var(--purple);
+    color: #fff;
+    border-radius: 8px;
+    padding: 3px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+}
+
+.tile-share[hidden] {
+    display: none !important;
 }
 
 .video-grid.is-pinned .tile:not(.is-pinned) .tile-mic {
@@ -543,6 +564,7 @@ a {
     transform: translateX(-50%);
     display: flex;
     gap: 10px;
+    max-width: calc(100vw - 16px);
     padding: 10px 14px;
     background: rgba(20, 20, 31, 0.92);
     border: 1px solid var(--line);
@@ -593,6 +615,16 @@ a {
 
 .bar-btn.leave:hover {
     background: var(--danger-dim);
+}
+
+.bar-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.video-grid.is-pinned .tile:not(.is-pinned) .tile-share {
+    font-size: 9px;
+    padding: 2px 5px;
 }
 
 .badge {
