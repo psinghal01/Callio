@@ -186,11 +186,36 @@ WHITENOISE_MAX_AGE = 0 if DEBUG else 60 * 60 * 24 * 30
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
+REDIS_URL = env("REDIS_URL", default="").strip()
+if REDIS_URL.startswith("redis://redis") and not _in_docker():
+    sys.stderr.write(
+        "WARNING: REDIS_URL points at the Compose service name. "
+        "Falling back to in-memory rooms. Use redis://127.0.0.1:6379/0 for a local Redis.\n"
+    )
+    REDIS_URL = ""
+
+ROOM_MAX_PARTICIPANTS = min(env.int("ROOM_MAX_PARTICIPANTS", default=20), 20)
+ROOM_TTL_SECONDS = env.int("ROOM_TTL_SECONDS", default=86400)
+ROOM_EMPTY_TTL_SECONDS = env.int("ROOM_EMPTY_TTL_SECONDS", default=86400)
+ROOM_CODE_LENGTH = env.int("ROOM_CODE_LENGTH", default=6)
+
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {
+                "hosts": [REDIS_URL],
+                "capacity": 1500,
+                "expiry": 20,
+            },
+        }
     }
-}
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = env.bool("USE_X_FORWARDED_HOST", default=True)

@@ -1,77 +1,175 @@
-# 🎥 Django WebRTC Video & Live Chat Application
+# Django WebRTC Video & Live Chat
 
-A real-time **Video Chat + Live Text Chat** application built using **Django**, **Django Channels**, **WebSockets (for signaling)**, and **WebRTC (Web Real-Time Communication)**.
+A real-time video conferencing and live chat application built with **Django**, **Django Channels**, **WebSockets**, and **WebRTC**.
 
-This project demonstrates how browsers establish a **direct connection** for audio/video while using Django only as a **signaling server**.
+Designed for low-latency browser-to-browser communication — users → rooms → signaling → WebRTC media → live chat.
+
+---
+
+## Tech Stack
+
+`Django : Django REST Framework : Django Channels : WebSockets : WebRTC : Redis : PostgreSQL : HTML : CSS : JavaScript : STUN/TURN : Docker : Docker Compose`
 
 ---
 
-## 🧠 Architecture Overview
+## Core Functionality
 
-* **Django + Channels** → Signaling server
-* **WebSocket** → Exchange metadata (SDP, ICE candidates)
-* **WebRTC** → Direct browser-to-browser media streaming
-* **STUN/TURN servers** → NAT traversal & public IP discovery
+### Video Calls
 
-> ⚠️ Important:
-> WebRTC works over **UDP**, which means:
->
-> * No guaranteed packet delivery
-> * Lower latency than TCP
-> * Some packets may be lost (acceptable for video/audio)
+Real-Time Video Calling · Audio Streaming · Browser-to-Browser Media Transfer · Multi-User Rooms
+
+### Live Chat
+
+Real-Time Text Chat · WebSocket Messaging · Room-Based Communication
+
+### WebRTC Signaling
+
+SDP Offer/Answer Exchange · ICE Candidate Exchange · Peer Discovery · WebSocket-Based Signaling
+
+### Rooms
+
+Create Rooms · Join via Room Code · Host Management · Participant Admission · Open-for-All Mode · Maximum 20 Participants
+
+### Network Connectivity
+
+STUN/TURN Support · NAT Traversal · Public IP Discovery · UDP-Based Low-Latency Communication
+
+### Real-Time Architecture
+
+Django Channels · WebSocket Connections · Redis Channel Layer · Asynchronous Communication
+
+### Room Management
+
+Redis-Based Room State · Automatic Room Expiration · TTL Support · Empty Room Cleanup
+
+### Health Monitoring
+
+Application Health Check · `/healthz/` Endpoint
 
 ---
-## 📡 Signaling Flow Diagram
 
+## Architecture
+
+```text
+USER A                  DJANGO + CHANNELS                  USER B
+Browser                       Server                     Browser
+   │                              │                          │
+   │──── WebSocket Connect ──────>│                          │
+   │                              │<──── WebSocket Connect ──│
+   │                              │                          │
+   │──── SDP Offer ──────────────>│                          │
+   │                              │──── Forward Offer ──────>│
+   │                              │                          │
+   │<──── Forward Answer ────────│<──── SDP Answer ─────────│
+   │                              │                          │
+   │──── ICE Candidates ─────────>│<──── ICE Candidates ─────│
+   │                              │                          │
+   │<========== WebRTC Connection Established =============>│
+   │                              │                          │
+   │<────── Direct Audio / Video Streaming ────────────────>│
 ```
-ALICE'S BROWSER          DJANGO SERVER         BOB'S BROWSER
-     |                        |                       |
-     |--[WebSocket Connect]-->|                       |
-     |<------[Accept]---------+                       |
-     |                        |                       |
-     |--[new-peer: Alice]---->|                       |
-     |                        |                       |
-     |                        |<--[WebSocket Connect]-|
-     |                        +--------[Accept]------>|
-     |                        |                       |
-     |                        |<--[new-peer: Bob]-----+
-     |<--[Broadcast Bob]------+                       |
-     |                        +-------[Broadcast]---->|
-     |                        |                       |
-     |--[new-offer]---------->|                       |
-     |                        +----[Forward Offer]--->|
-     |                        |                       |
-     |                        |<--[new-answer]--------+
-     |<---[Forward Answer]----+                       |
-     |                        |                       |
-     |<===== WebRTC Connection Established ==========>|
-     |                        |                       |
-     | Video/Audio flows directly between browsers    |
-     | Server is no longer involved!                  |
+
+**Django acts as the signaling server.**
+
+After the WebRTC connection is established, audio and video are transmitted directly between browsers whenever the network topology allows it. Django is not responsible for transferring the media stream.
+
+---
+
+## WebRTC Flow
+
+```text
+User joins room
+      ↓
+WebSocket connection
+      ↓
+Peer discovery
+      ↓
+SDP Offer / Answer
+      ↓
+ICE Candidate Exchange
+      ↓
+STUN / TURN
+      ↓
+WebRTC Connection
+      ↓
+Direct Audio + Video
 ```
 
 ---
-## 🛠️ Tech Stack
 
-* **Backend**: Django, Django Channels
-* **Protocol**: WebSocket
-* **Real-Time Media**: WebRTC
-* **Frontend**: HTML, CSS, JavaScript
+## Structure
+
+```text
+Callio/
+├── Dockerfile
+├── docker-compose.yml
+├── .env.example
+├── requirements.txt
+├── README.md
+│
+├── main/
+│   ├── manage.py
+│   │
+│   ├── main/
+│   │   ├── settings.py
+│   │   ├── urls.py
+│   │   ├── asgi.py
+│   │   └── routing.py
+│   │
+│   ├── chat/
+│   ├── call/
+│   └── templates/
+│
+└── ...
+```
 
 ---
 
-## ▶️ How to Run (Docker — recommended)
-
-Requires Docker and Docker Compose. From the `Callio` folder:
+## Setup (Local)
 
 ```bash
-cp .env.example .env   # already present if you cloned this setup
+git clone <your-repository-url>
+cd <project-folder-name>
+
+python3 -m venv venv
+source venv/bin/activate
+
+pip install -r requirements.txt
+
+cp .env.example .env
+```
+
+For a local non-Docker setup, use SQLite:
+
+```env
+USE_SQLITE=true
+```
+
+Or configure PostgreSQL using a running local PostgreSQL instance.
+
+Run the server:
+
+```bash
+python manage.py runserver
+```
+
+App → `http://127.0.0.1:8000/`
+
+Open the application in **two browsers/tabs**, join the same room, and allow camera and microphone permissions.
+
+---
+
+## Setup (Docker)
+
+```bash
+cp .env.example .env
+
 docker compose up --build
 ```
 
-Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/) in two tabs, join with different usernames, allow camera/mic.
+App → `http://127.0.0.1:8000/`
 
-Health check: [http://127.0.0.1:8000/healthz/](http://127.0.0.1:8000/healthz/)
+Health Check → `http://127.0.0.1:8000/healthz/`
 
 Stop:
 
@@ -79,104 +177,42 @@ Stop:
 docker compose down
 ```
 
-Postgres data lives in the `postgres_data` volume. `docker compose down -v` deletes it.
+PostgreSQL data is stored in the `postgres_data` Docker volume.
 
----
-
-## ▶️ How to Run This Project Locally (no Docker)
-
-Follow the steps below to set up and run the application on your local machine.
-
----
-
-### 1️⃣ Clone the Repository
+To remove the database volume:
 
 ```bash
-git clone <your-repository-url>
-```
-
-Move into the project directory:
-
-```bash
-cd <project-folder-name>
+docker compose down -v
 ```
 
 ---
 
-### 2️⃣ Create a Virtual Environment
+## Environment Variables
 
-#### On Windows
+Create `.env` using `.env.example`.
 
-```bash
-python -m venv venv
+For Docker Compose, PostgreSQL should use the Compose service hostname:
+
+```env
+POSTGRES_HOST=db
 ```
 
-Activate it:
+For a local PostgreSQL installation:
 
-```bash
-venv\Scripts\activate
-```
-
-#### On macOS / Linux
-
-```bash
-python3 -m venv venv
-```
-
-Activate it:
-
-```bash
-source venv/bin/activate
-```
-
-You should now see `(venv)` in your terminal.
-
----
-
-### 3️⃣ Install Dependencies
-
-Once the virtual environment is activated, install all required packages using:
-
-```bash
-pip install -r requirements.txt
-```
-
-Copy `.env.example` to `.env`. For a no-Docker run, set `USE_SQLITE=true` **or** point `POSTGRES_HOST` at a running Postgres (`localhost`). Leave `POSTGRES_HOST=db` only when using Compose.
-
----
-
-### 4️⃣ Run the Django Server
-
-Make sure you are in the **main folder** (where `manage.py` exists), then run:
-
-```bash
-python manage.py runserver
+```env
+POSTGRES_HOST=localhost
 ```
 
 ---
 
-### 5️⃣ Open the App in Browser
+## Requirements
 
-Open your browser and go to:
-
-```
-http://127.0.0.1:8000/
-```
-
-* Open the same URL in **two different tabs or browsers**
-* Enter different usernames
-* Allow camera & microphone access
-* Start video and live chat 🎥💬
+* Camera and microphone permissions must be enabled.
+* Use a modern browser such as **Chrome, Firefox, or Edge**.
+* WebRTC uses **UDP** where possible for low-latency media communication.
+* STUN/TURN servers may be required for reliable connectivity across restrictive NATs or firewalls.
+* Django/WebSockets handle **signaling**, while WebRTC handles the actual audio/video communication.
 
 ---
 
-## ⚠️ Important Notes
-
-* Camera & microphone permissions **must be allowed**
-* WebRTC works best on:
-  * Chrome
-  * Firefox
-  * Edge
-* Server is used **only for signaling**, not media transfer
-
----
+Built as a real-time communication system demonstrating **WebRTC, WebSockets, Django Channels, Redis, and browser-to-browser media streaming**.

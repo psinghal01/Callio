@@ -1,39 +1,181 @@
-{%load static%}
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Django Channel WebRTC</title>
-    <link rel="stylesheet" type="text/css" href="{%static 'css/main.css'%}">
+    <title>Callio — {{ room_code }}</title>
+    <link rel="icon" type="image/png" href="{% static 'assets/logo.png' %}">
+    <link rel="apple-touch-icon" href="{% static 'assets/logo.png' %}">
+    <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}">
 </head>
-<body>
-    <h3 id="label-username">Username</h3>
-    <div>
-        <input id="username"><button id="btn-join">Join Room</button>
-    </div>
+<body class="meet-app">
+    {{ room_config|json_script:"room-config" }}
 
-    <div class="main-grid-container">
-        <div id="video-container">
-            <div>
-                <video id="local-video" style="float:left;" autoplay playsinline></video>
-            </div>
-            <button id="btn-toggle-audio">Audio Mute</button>
-            <button id="btn-toggle-video">Video OFF</button>
-        </div> 
+    <header class="meet-top">
+        <a class="brand" href="{% url 'lobby' %}">
+            <img class="brand-logo-sm" src="{% static 'assets/logo.png' %}" alt="" width="36" height="36" onerror="this.remove()">
+            Callio
+        </a>
+        <div class="meet-top-meta">
+            <span class="room-pill">{{ room_code }}</span>
+            <button type="button" id="btn-copy-link" class="text-btn" title="Copy meeting link">Copy link</button>
+            <span id="room-count" class="count-pill" hidden></span>
+        </div>
+    </header>
 
-        <div id="chat">
-            <h3>CHAT</h3>
-            <div id="messages">
-                <ul id="message-list"></ul>
+    {% if messages %}
+    <ul class="flash-list">
+        {% for message in messages %}
+        <li class="flash">{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <main class="meet-stage">
+        {% if not room_exists %}
+        <section class="meet-card" id="gone-card">
+            <h2>This meeting has ended</h2>
+            <p>The room expired or never existed.</p>
+            <a class="btn-primary" href="{% url 'lobby' %}">Back home</a>
+        </section>
+        {% else %}
+        <section id="join-panel" class="meet-card">
+            <h2>Ready to join?</h2>
+            <p>Choose a name. You’ll wait for the host unless the room is open for all.</p>
+            <div class="join-row">
+                <input id="username" maxlength="32" autocomplete="nickname" placeholder="Your name">
+                <button type="button" id="btn-join" class="btn-primary">Join now</button>
+            </div>
+            <p id="join-error" class="form-error" hidden></p>
+        </section>
+
+        <div id="solo-idle-modal" class="modal" hidden>
+            <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="solo-idle-title">
+                <h2 id="solo-idle-title">You’re the only one here</h2>
+                <p class="modal-copy">No one else has joined. This call will end in <strong id="solo-idle-countdown">0:30</strong>. The meeting link will still work.</p>
+                <div class="card-actions modal-actions">
+                    <button type="button" id="btn-solo-stay" class="btn-primary">Stay</button>
+                    <button type="button" id="btn-solo-leave" class="btn-ghost">Leave</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="name-taken-modal" class="modal" hidden>
+            <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="name-taken-title">
+                <h2 id="name-taken-title">That name is taken</h2>
+                <p class="modal-copy">Someone in this meeting already uses this name. Pick another, or continue if it’s you on another tab.</p>
+                <label class="visually-hidden" for="name-taken-input">New name</label>
+                <input id="name-taken-input" maxlength="32" autocomplete="nickname" placeholder="Choose a different name">
+                <p id="name-taken-error" class="form-error" hidden></p>
+                <div class="card-actions modal-actions">
+                    <button type="button" id="btn-name-change" class="btn-primary">Join with this name</button>
+                    <button type="button" id="btn-name-takeover" class="btn-ghost">That’s me — use this tab</button>
+                </div>
+            </div>
+        </div>
+
+        <section id="waiting-panel" class="meet-card" hidden>
+            <div class="pulse-dot" aria-hidden="true"></div>
+            <h2>Waiting for the host</h2>
+            <p>You’ll enter the call when they let you in.</p>
+        </section>
+
+        <section id="blocked-panel" class="meet-card" hidden>
+            <h2 id="blocked-title">You’re in this meeting in another tab</h2>
+            <p id="blocked-copy">This tab was disconnected so only one session stays live.</p>
+            <div class="card-actions">
+                <button type="button" id="btn-reuse-tab" class="btn-primary">Use this tab</button>
+                <a class="btn-ghost" href="{% url 'lobby' %}">Return home</a>
+            </div>
+        </section>
+
+        <div id="call-layout" hidden>
+            <div id="video-grid" class="video-grid">
+                <article class="tile tile-local video-off" id="local-tile" data-peer="__local__">
+                    <video id="local-video" autoplay playsinline muted></video>
+                    <div class="tile-avatar" aria-hidden="true"><span class="tile-letter" id="local-letter">?</span></div>
+                    <button type="button" class="tile-pin" data-pin="__local__" title="Pin" aria-label="Pin your video">
+                        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M16 9V4h1V2H7v2h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"/></svg>
+                    </button>
+                    <span class="tile-name" id="local-name">You</span>
+                </article>
             </div>
 
-            <div>
-                <input id="msg">
-                <button id="btn-send-msg">Send Message</button>
-            </div>
-        </div> 
-    </div>
-    <script type="text/javascript" src="{%static 'js/main.js'%}"></script>
+            <aside id="drawer-chat" class="drawer" hidden>
+                <header class="drawer-head">
+                    <h3>In-call messages</h3>
+                    <button type="button" class="icon-close" data-close-drawer="chat" aria-label="Close chat">×</button>
+                </header>
+                <div id="messages">
+                    <ul id="message-list"></ul>
+                </div>
+                <div class="drawer-compose">
+                    <input id="msg" maxlength="2000" autocomplete="off" placeholder="Send a message">
+                    <button type="button" id="btn-send-msg" class="btn-primary compact">Send</button>
+                </div>
+            </aside>
+
+            <aside id="drawer-people" class="drawer" hidden>
+                <header class="drawer-head">
+                    <h3>People</h3>
+                    <button type="button" class="icon-close" data-close-drawer="people" aria-label="Close people">×</button>
+                </header>
+                <div class="drawer-body people-body">
+                    <section class="people-section">
+                        <h4>In the call</h4>
+                        <ul id="admitted-list" class="people-list"></ul>
+                    </section>
+                    <section id="waiting-host" class="people-section">
+                        <h4>Waiting to join</h4>
+                        <ul id="waiting-list" class="people-list"></ul>
+                        <p id="waiting-empty" class="muted">No one is waiting.</p>
+                    </section>
+                </div>
+            </aside>
+
+            <aside id="drawer-settings" class="drawer" hidden>
+                <header class="drawer-head">
+                    <h3>Host settings</h3>
+                    <button type="button" class="icon-close" data-close-drawer="settings" aria-label="Close settings">×</button>
+                </header>
+                <label class="toggle-row">
+                    <input type="checkbox" id="open-for-all">
+                    <span>
+                        <strong>Open for all</strong>
+                        <small>New people skip the waiting room until the room is full (20).</small>
+                    </span>
+                </label>
+            </aside>
+        </div>
+        {% endif %}
+    </main>
+
+    <p id="toast" class="toast" hidden></p>
+
+    <footer id="call-bar" class="meet-bar" hidden>
+        <button type="button" id="btn-toggle-audio" class="bar-btn off" title="Microphone" aria-label="Turn on microphone">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+        </button>
+        <button type="button" id="btn-toggle-video" class="bar-btn off" title="Camera" aria-label="Turn on camera">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+        </button>
+        <button type="button" id="btn-chat" class="bar-btn" title="Chat" aria-label="Toggle chat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+            <span id="chat-badge" class="badge" hidden>0</span>
+        </button>
+        <button type="button" id="btn-people" class="bar-btn" title="People" aria-label="Toggle people">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+            <span id="waiting-badge" class="badge" hidden>0</span>
+        </button>
+        <button type="button" id="btn-settings" class="bar-btn" title="Settings" aria-label="Settings" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.49.49 0 0 0-.48-.41h-3.84a.49.49 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.74 8.87c-.12.2-.07.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.61l1.92 3.32c.12.22.37.29.61.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.48-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.49 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.61l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 15.6 12 3.6 3.6 0 0 1 12 15.6z"/></svg>
+        </button>
+        <a id="btn-leave" class="bar-btn leave" href="{% url 'lobby' %}" title="Leave" aria-label="Leave call">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+        </a>
+    </footer>
+
+    <script type="text/javascript" src="{% static 'js/main.js' %}"></script>
 </body>
 </html>

@@ -6,6 +6,9 @@ cd /app/main
 echo "Waiting for database..."
 python manage.py wait_for_db --timeout "${DB_WAIT_TIMEOUT:-60}"
 
+echo "Waiting for Redis..."
+python manage.py wait_for_redis --timeout "${REDIS_WAIT_TIMEOUT:-60}"
+
 echo "Creating migrations if models changed..."
 python manage.py makemigrations --noinput
 

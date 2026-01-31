@@ -1,0 +1,85 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Callio</title>
+    <link rel="icon" type="image/png" href="{% static 'assets/logo.png' %}">
+    <link rel="apple-touch-icon" href="{% static 'assets/logo.png' %}">
+    <link rel="stylesheet" type="text/css" href="{% static 'css/main.css' %}">
+</head>
+<body class="lobby-page">
+    <main class="lobby-hero">
+        <section class="lobby-copy">
+            <div class="brand-lockup">
+                <img class="brand-logo" src="{% static 'assets/logo.png' %}" alt="" width="96" height="80" onerror="this.remove()">
+                <p class="brand-mark">Callio</p>
+            </div>
+            <h1>Hop on. Camera optional.</h1>
+            <p class="lobby-lead">Create a room and share the link. Guests wait until you let them in, unless you open the room for all.</p>
+
+            {% if messages %}
+            <ul class="flash-list">
+                {% for message in messages %}
+                <li class="flash">{{ message }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            <form method="post" action="{% url 'create_room' %}" class="lobby-form">
+                {% csrf_token %}
+                <button type="submit" class="btn-primary wide">New meeting</button>
+            </form>
+
+            <div class="lobby-divider">or enter a code</div>
+
+            <form method="post" action="{% url 'join_room' %}" class="lobby-form lobby-join">
+                {% csrf_token %}
+                <label class="visually-hidden" for="room-code">Room code</label>
+                <input id="room-code" type="text" name="code" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Room code" required>
+                <button type="submit" class="btn-ghost">Join</button>
+            </form>
+
+            <ul class="lobby-points">
+                <li>Waiting room</li>
+                <li>Shareable link</li>
+                <li>Up to 20 people</li>
+            </ul>
+        </section>
+
+        <aside class="lobby-preview" aria-hidden="true">
+            <div class="preview-glow"></div>
+            <div class="preview-stage">
+                <article class="preview-tile">
+                    <span class="preview-avatar">A</span>
+                    <span class="preview-live"></span>
+                    <span class="preview-name">Alex</span>
+                </article>
+                <article class="preview-tile muted-cam">
+                    <span class="preview-avatar alt">S</span>
+                    <span class="preview-cam-off" title="">
+                        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M3.27 2 2 3.27 4.73 6H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.21 0 .39-.08.55-.18L19.73 22 21 20.73 3.27 2zM21 6.5l-4 4V7c0-.55-.45-1-1-1h-3.73l8.29 8.29c.27-.11.44-.38.44-.68V6.5z"/></svg>
+                    </span>
+                    <span class="preview-name">Sam</span>
+                </article>
+                <article class="preview-tile you">
+                    <span class="preview-avatar you">Y</span>
+                    <span class="preview-name">You</span>
+                </article>
+            </div>
+            <div class="preview-bar">
+                <span class="preview-ctrl">
+                    <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+                </span>
+                <span class="preview-ctrl">
+                    <svg viewBox="0 0 24 24"><path fill="currentColor" d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/></svg>
+                </span>
+                <span class="preview-ctrl leave">
+                    <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+                </span>
+            </div>
+        </aside>
+    </main>
+</body>
+</html>
