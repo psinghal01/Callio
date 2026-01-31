@@ -171,6 +171,29 @@ App → `http://127.0.0.1:8000/`
 
 Health Check → `http://127.0.0.1:8000/healthz/`
 
+Compose also starts a local **coturn** STUN/TURN server on port `3478`. The web app does not wait on it; calls still start if TURN is down (host-only ICE).
+
+---
+
+## STUN / TURN (ICE)
+
+Browsers need a reachable STUN/TURN host. Never point ICE URLs at the Compose service name `coturn` — that hostname only exists on the Docker network, not in the browser.
+
+| Setup | What to set |
+| --- | --- |
+| Two tabs on this machine | Defaults: `ICE_*` and `ICE_EXTERNAL_IP=127.0.0.1` |
+| Phone on the same Wi-Fi | Add the PC LAN IP to `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS`. Set `ICE_HOST` and `ICE_EXTERNAL_IP` to that LAN IP. Open the app via `http://<lan-ip>:8000/` |
+| Friend on the public internet | Run coturn on a public VPS (or a hosted TURN). Set `ICE_STUN_URLS` / `ICE_TURN_URLS` to that public host. Local Docker coturn cannot be reached from 4G. |
+| Disable ICE servers | `ICE_ENABLED=false` (same-machine host candidates only) |
+
+After changing ICE env vars, recreate the stack so Django and coturn both pick them up:
+
+```bash
+docker compose up --build
+```
+
+In Chrome, `chrome://webrtc-internals` should list your `iceServers`. Same-LAN or NAT-restricted paths may show `srflx` / `relay` candidates. A remote peer still cannot use `127.0.0.1` TURN.
+
 Stop:
 
 ```bash

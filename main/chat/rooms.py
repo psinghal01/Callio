@@ -132,6 +132,9 @@ class _BaseStore:
     async def get(self, code: str) -> dict[str, Any] | None:
         raise NotImplementedError
 
+    async def has_admitted_channel(self, code: str, channel: str) -> bool:
+        raise NotImplementedError
+
     async def join(
         self, code: str, username: str, channel: str, replace: bool = False
     ) -> dict[str, Any]:
@@ -200,6 +203,19 @@ class MemoryRoomStore(_BaseStore):
                 return None
             self._touch(room, False)
             return _snapshot(code, room["meta"], room["users"])
+
+    async def has_admitted_channel(self, code: str, channel: str) -> bool:
+        if not channel:
+            return False
+        async with self._lock:
+            self._purge_locked()
+            room = self._rooms.get(code)
+            if not room:
+                return False
+            return any(
+                u.get("channel") == channel and u.get("state") == "admitted"
+                for u in room["users"].values()
+            )
 
     async def join(
         self, code: str, username: str, channel: str, replace: bool = False
@@ -501,6 +517,21 @@ class RedisRoomStore(_BaseStore):
             return None
         except Exception as exc:
             raise RoomUnavailable() from exc
+
+    async def has_admitted_channel(self, code: str, channel: str) -> bool:
+        if not channel:
+            return False
+        try:
+            r = await self._redis()
+            _meta, users = await self._load(r, code)
+            return any(
+                u.get("channel") == channel and u.get("state") == "admitted"
+                for u in users.values()
+            )
+        except RoomError:
+            return False
+        except Exception:
+            return False
 
     async def _with_lock(self, code: str, fn):
         r = await self._redis()

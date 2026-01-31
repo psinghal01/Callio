@@ -7,7 +7,19 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from main.settings import ice_servers
+
 from .rooms import RoomUnavailable, get_store, normalize_code, valid_code
+
+
+def _page_host(request) -> str:
+    raw = (request.get_host() or "").strip()
+    if raw.startswith("["):
+        end = raw.find("]")
+        if end > 0:
+            return raw[1:end]
+        return raw
+    return raw.split(":", 1)[0].strip()
 
 
 def _redis_ok():
@@ -81,6 +93,7 @@ def room_view(request, room_code):
                 "code": code,
                 "exists": room is not None,
                 "maxParticipants": min(int(getattr(settings, "ROOM_MAX_PARTICIPANTS", 20)), 20),
+                "iceServers": ice_servers(client_host=_page_host(request)),
             },
         },
     )

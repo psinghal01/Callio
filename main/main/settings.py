@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import sys
 
 import environ
@@ -198,6 +199,91 @@ ROOM_MAX_PARTICIPANTS = min(env.int("ROOM_MAX_PARTICIPANTS", default=20), 20)
 ROOM_TTL_SECONDS = env.int("ROOM_TTL_SECONDS", default=86400)
 ROOM_EMPTY_TTL_SECONDS = env.int("ROOM_EMPTY_TTL_SECONDS", default=86400)
 ROOM_CODE_LENGTH = env.int("ROOM_CODE_LENGTH", default=6)
+
+ICE_ENABLED = env.bool("ICE_ENABLED", default=True)
+ICE_STUN_URLS = env.str("ICE_STUN_URLS", default="stun:127.0.0.1:3478")
+ICE_TURN_URLS = env.str("ICE_TURN_URLS", default="turn:127.0.0.1:3478")
+ICE_TURN_USERNAME = env.str("ICE_TURN_USERNAME", default="callio")
+ICE_TURN_PASSWORD = env.str("ICE_TURN_PASSWORD", default="callio-turn")
+ICE_HOST = env.str("ICE_HOST", default="")
+
+_ICE_URL_RE = re.compile(
+    r"^(?P<scheme>stuns?|turns?):(?P<host>\[[^\]]+\]|[^:?/\s]+)(?P<port>:\d+)?(?P<rest>\S*)\s*$",
+    re.IGNORECASE,
+)
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "0.0.0.0", "::1", "[::1]"})
+
+
+def _ice_url_host(url: str) -> str:
+    match = _ICE_URL_RE.match((url or "").strip())
+    if not match:
+        return ""
+    host = match.group("host") or ""
+    if host.startswith("[") and host.endswith("]"):
+        return host[1:-1]
+    return host
+
+
+def _format_ice_host(host: str) -> str:
+    host = (host or "").strip()
+    if host.startswith("[") and host.endswith("]"):
+        return host
+    if ":" in host:
+        return f"[{host}]"
+    return host
+
+
+def _rewrite_ice_url(url: str, host: str) -> str:
+    url = (url or "").strip()
+    host = _format_ice_host(host)
+    if not host or not url:
+        return url
+    match = _ICE_URL_RE.match(url)
+    if not match:
+        return url
+    return f"{match.group('scheme')}:{host}{match.group('port') or ''}{match.group('rest') or ''}"
+
+
+def _usable_ice_urls(raw_urls: list[str], advertise: str, force_rewrite: bool) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw_urls:
+        url = item.strip()
+        if not url or not _ICE_URL_RE.match(url):
+            continue
+        if advertise and (force_rewrite or _ice_url_host(url).lower() in _LOOPBACK_HOSTS):
+            url = _rewrite_ice_url(url, advertise)
+        key = url.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(url)
+    return out
+
+
+def ice_servers(*, client_host: str | None = None) -> list[dict]:
+    if not ICE_ENABLED:
+        return []
+    configured = (ICE_HOST or "").strip()
+    advertise = configured or (client_host or "").strip()
+    if advertise.lower() in _LOOPBACK_HOSTS and not configured:
+        advertise = ""
+    servers: list[dict] = []
+    stuns = _usable_ice_urls(_csv("ICE_STUN_URLS", ICE_STUN_URLS), advertise, bool(configured))
+    if stuns:
+        servers.append({"urls": stuns[0] if len(stuns) == 1 else stuns})
+    turns = _usable_ice_urls(_csv("ICE_TURN_URLS", ICE_TURN_URLS), advertise, bool(configured))
+    user = (ICE_TURN_USERNAME or "").strip()
+    password = ICE_TURN_PASSWORD or ""
+    if turns and user and password:
+        servers.append(
+            {
+                "urls": turns[0] if len(turns) == 1 else turns,
+                "username": user,
+                "credential": password,
+            }
+        )
+    return servers
 
 if REDIS_URL:
     CHANNEL_LAYERS = {

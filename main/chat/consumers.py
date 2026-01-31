@@ -1,8 +1,41 @@
 import json
+import logging
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from .rooms import RoomError, RoomUnavailable, get_store, valid_code
+
+logger = logging.getLogger("callio.signal")
+
+
+def _sdp_media_lines(message: dict) -> list[str]:
+    sdp = message.get("sdp")
+    text = ""
+    if isinstance(sdp, dict):
+        text = str(sdp.get("sdp") or "")
+    elif isinstance(sdp, str):
+        text = sdp
+    return [line for line in text.splitlines() if line.startswith("m=")]
+
+
+def _valid_ice_candidate(candidate) -> bool:
+    if candidate is None:
+        return True
+    if not isinstance(candidate, dict) or len(candidate) > 8:
+        return False
+    raw = candidate.get("candidate")
+    if raw is not None and (not isinstance(raw, str) or len(raw) > 1024):
+        return False
+    mid = candidate.get("sdpMid")
+    if mid is not None and (not isinstance(mid, str) or len(mid) > 64):
+        return False
+    index = candidate.get("sdpMLineIndex")
+    if index is not None and not isinstance(index, int):
+        return False
+    frag = candidate.get("usernameFragment")
+    if frag is not None and (not isinstance(frag, str) or len(frag) > 256):
+        return False
+    return True
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -78,7 +111,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if action == "set-open-for-all":
             await self._handle_settings(data)
             return
-        if action in ("new-peer", "new-offer", "new-answer"):
+        if action in ("new-peer", "new-offer", "new-answer", "ice-candidate"):
             await self._handle_signal(data)
             return
         await self._error("unknown_action", "Unknown action.")
@@ -291,11 +324,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "action": action,
             "message": {**message, "receiver_channel_name": self.channel_name},
         }
-        if action in ("new-offer", "new-answer"):
+        if action in ("new-offer", "new-answer", "ice-candidate"):
             target = message.get("receiver_channel_name")
-            if not target or not isinstance(target, str):
+            if not target or not isinstance(target, str) or len(target) > 256:
                 await self._error("bad_payload", "Missing receiver.")
                 return
+            if target == self.channel_name:
+                await self._error("bad_payload", "Invalid receiver.")
+                return
+            if not await get_store().has_admitted_channel(self.room_code, target):
+                await self._error("bad_payload", "Unknown receiver.")
+                return
+            if action == "ice-candidate":
+                candidate = message.get("candidate")
+                if not _valid_ice_candidate(candidate):
+                    await self._error("bad_payload", "Invalid ICE candidate.")
+                    return
+            if action in ("new-offer", "new-answer"):
+                lines = _sdp_media_lines(message)
+                logger.info("%s from %s in %s: %s", action, self.username, self.room_code, lines)
+                print(
+                    f"SDP {action} {self.username} {self.room_code}: {lines}",
+                    flush=True,
+                )
             await self.channel_layer.send(
                 target,
                 {"type": "send.sdp", "receive_dict": payload},

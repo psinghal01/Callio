@@ -217,7 +217,6 @@ a {
 }
 
 .tile.video-off video {
-    opacity: 0;
     pointer-events: none;
 }
 
@@ -258,6 +257,23 @@ a {
     font-size: var(--strip-letter-font, 16px);
 }
 
+.hear-btn {
+    position: absolute;
+    left: 50%;
+    bottom: 48px;
+    transform: translateX(-50%);
+    z-index: 4;
+    border: none;
+    border-radius: 999px;
+    padding: 10px 16px;
+    background: #fff;
+    color: #111;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
 .tile-pin {
     position: absolute;
     top: 10px;
@@ -290,19 +306,69 @@ a {
     background: var(--purple);
 }
 
-.tile-name {
+.tile-chrome {
     position: absolute;
     left: 10px;
     bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 2;
+    max-width: calc(100% - 20px);
+}
+
+.tile-name {
     background: rgba(0, 0, 0, 0.55);
     border-radius: 8px;
     padding: 3px 8px;
     font-size: 12px;
-    z-index: 2;
-    max-width: calc(100% - 20px);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    min-width: 0;
+}
+
+.tile-mic {
+    flex: 0 0 auto;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    display: grid;
+    place-items: center;
+}
+
+.tile-mic.is-off {
+    background: rgba(234, 67, 53, 0.92);
+}
+
+.tile-mic svg {
+    width: 13px;
+    height: 13px;
+    display: block;
+}
+
+.tile-mic .mic-slash {
+    display: none;
+}
+
+.tile-mic.is-off .mic-on {
+    display: none;
+}
+
+.tile-mic.is-off .mic-slash {
+    display: block;
+}
+
+.video-grid.is-pinned .tile:not(.is-pinned) .tile-mic {
+    width: 18px;
+    height: 18px;
+}
+
+.video-grid.is-pinned .tile:not(.is-pinned) .tile-mic svg {
+    width: 11px;
+    height: 11px;
 }
 
 .meet-card {
